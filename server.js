@@ -60,7 +60,6 @@ app.post('/polls/:id/vote', async (req, res) => {
 // get vote count for a poll
 app.get('/polls/:id', async (req, res) => {
     const { id } = req.params;
-
     try {
         const poll = await prisma.polls.findUnique({
             where: {
@@ -96,7 +95,7 @@ app.get('/polls/:id', async (req, res) => {
 
 // api for leaderboard
 app.get('/leaderboard', async (req, res) => {
-    const leaderboard = await prisma.votes.groupBy({
+    const result = await prisma.votes.groupBy({
         by: ['poll_id'],
         _count: {
             poll_id: true,
@@ -109,12 +108,12 @@ app.get('/leaderboard', async (req, res) => {
         take: 10
     });
 
-    const fmtLeaderboard = leaderboard.map((entry) => ({
+    const leaderboard = result.map((entry) => ({
         poll_id: entry.poll_id,
         votes: entry._count.poll_id
     }));
 
-    res.json(fmtLeaderboard);
+    res.json(leaderboard);
 })
 
 // recieve processed votes, push to db and broadcast to clients
