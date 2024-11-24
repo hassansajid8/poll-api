@@ -1,6 +1,5 @@
 const bodyParser = require('body-parser');
 const express = require('express');
-const kafka = require('kafka-node');
 const http = require('http');
 const { Server } = require('socket.io');
 const prisma = require('./lib/db');
@@ -12,9 +11,6 @@ app.use(bodyParser.json());
 // create http server for express and socket.io
 const server = http.createServer(app);
 const io = new Server(server);
-
-// store connected clients
-const clients = new Map();
 
 //handle websocket connections
 io.on('connection', (socket) => {
@@ -52,7 +48,7 @@ app.post('/polls/:id/vote', async (req, res) => {
     const vote = { pollId, optionId }
 
     KafkaProducer.send([{ topic: 'votes', messages: JSON.stringify(vote) }], (err) => {
-        if(err) {
+        if (err) {
             console.log("Error writing kafka message", err);
             return res.status(500).send('Error processing vote');
         }
@@ -65,28 +61,37 @@ app.post('/polls/:id/vote', async (req, res) => {
 app.get('/polls/:id', async (req, res) => {
     const { id } = req.params;
 
-    const poll = await prisma.polls.findUnique({
-        where: {
-            id: id
-        }
-    });
+    try {
+        const poll = await prisma.polls.findUnique({
+            where: {
+                id: id
+            }
+        });
 
-    const result = await prisma.votes.groupBy({
-        by: ['option_id'],
-        _count: {
-            option_id: true,
-        },
-        where: {
-            poll_id: id
+        if (!poll) {
+            return res.status(404).send("poll not found");
         }
-    });
 
-    const fmtResults = result.map((entry) => ({
-        option_id: entry.option_id,
-        votes: entry._count.option_id,
-    }));
-    
-    res.json({ poll: poll, result: fmtResults });
+        const result = await prisma.votes.groupBy({
+            by: ['option_id'],
+            _count: {
+                option_id: true,
+            },
+            where: {
+                poll_id: id
+            }
+        });
+
+        const fmtResults = result.map((entry) => ({
+            option_id: entry.option_id,
+            votes: entry._count.option_id,
+        }));
+
+        res.json({ poll: poll, result: fmtResults });
+    } catch (err) {
+        console.log("/polls/:id -- some error occurred", err);
+        return res.status(500).send("some error occurred");
+    }
 });
 
 // api for leaderboard
